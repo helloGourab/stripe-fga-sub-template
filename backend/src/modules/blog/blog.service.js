@@ -31,7 +31,20 @@ export const createBlogService = async (title, body, authorId, tier = 'free') =>
 };
 
 export const getBlogByIdService = async (blogId, userId) => {
-    // Check OpenFGA for 'can_read'
+    // 1. Fetch the blog first to check the tier
+    const blog = await Blog.findById(blogId);
+
+    if (!blog) {
+        throw new Error('Blog not found');
+    }
+
+    // 2. SHORT-CIRCUIT: If it's free, everyone gets in. 
+    // No need to pay the "network tax" for an FGA check.
+    if (blog.tier === 'free') {
+        return blog;
+    }
+
+    // 3. SECURE CHECK: For 'basic' or 'pro', consult FGA
     const { allowed } = await fgaClient.check({
         user: `user:${userId}`,
         relation: 'can_read',
@@ -39,8 +52,9 @@ export const getBlogByIdService = async (blogId, userId) => {
     });
 
     if (!allowed) {
+        // Blunt error as requested
         throw new Error('Forbidden: Your current plan does not cover this content');
     }
 
-    return await Blog.findById(blogId);
+    return blog;
 };
